@@ -249,3 +249,7 @@ input[readonly]{
 }
 
 .qcadooRowClass { background-color: #DDDDDC; background-image: none; }
+
+.disableButton{
+    pointer-events:none;
+}
