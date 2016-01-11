@@ -252,4 +252,11 @@ input[readonly]{
 
 .disableButton{
     pointer-events:none;
+    opacity: 0.5;
+   filter: alpha(opacity=50);
+}
+
+.disabled-button {
+    opacity: 0.5;
+    filter: alpha(opacity=50);
 }

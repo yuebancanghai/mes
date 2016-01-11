@@ -84,8 +84,10 @@ myApp.directive('ngJqGrid', function ($window) {
 
                     var positionsHeader = QCD.translate('qcadooView.gridHeader.positions');
                     var newHeader = QCD.translate('qcadooView.gridHeader.new');
-                    var addNewRowButton = '<div id="add_new_row" class="headerActionButton headerButtonEnabled"' + (scope.readOnly ? '' : ' onclick="return addNewRow();"') + '> <a href="#"><span>' +
-                            '<div class="icon" id="add_new_icon""></div>' +
+
+                    var addNewRowButton = '<div id="add_new_row" class="headerActionButton headerButtonEnabled ' + (newValue.readOnly ? 'disabled-button"' : '" onclick="return addNewRow();"') + '> <a href="#"><span>' +
+                            '<div id="add_new_icon""></div>' +
+
                             '<div class="hasIcon">' + newHeader + '</div></div>';
 
                     var gridTitle = '<div class="gridTitle">' + positionsHeader + '</div>';
@@ -108,7 +110,7 @@ myApp.directive('ngJqGrid', function ($window) {
                         return '';
                     }
 
-                    if (!scope.readOnly) {
+                    if (!newValue.readOnly) {
                         $(table).navGrid('#jqGridPager',
                                 // the buttons to appear on the toolbar of the grid
                                         {edit: true, add: true, del: true, search: false, refresh: false, view: false, position: "left", cloneToTop: false},
@@ -322,6 +324,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
         var _this = this;
         var quantities = {};
         var lastSel;
+        var conversionModified = false;
 
         function getRowIdFromElement(el) {
             var rowId = el.attr('rowId');
@@ -481,6 +484,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 var t = $(this);
                 window.clearTimeout(t.data("timeout"));
                 $(this).data("timeout", setTimeout(function () {
+                    conversionModified = false;
                     updateUnitsInGridByProduct(t.val());
                 }, 500));
             });
@@ -556,18 +560,20 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
         function updateConversionByGivenUnitValue(givenUnitValue, rowId) {
             var conversion = '';
 
-            if (available_additionalunits) {
-                var entry = available_additionalunits.filter(function (element, index) {
-                    return element.key === givenUnitValue;
-                })[0];
-                if (entry) {
-                    quantities[rowId || 0] = {from: entry.quantityfrom, to: entry.quantityto};
-                    conversion = roundTo(parseFloat(entry.quantityto) / parseFloat(entry.quantityfrom));
+            if (!conversionModified) {
+                if (available_additionalunits) {
+                    var entry = available_additionalunits.filter(function (element, index) {
+                        return element.key === givenUnitValue;
+                    })[0];
+                    if (entry) {
+                        quantities[rowId || 0] = {from: entry.quantityfrom, to: entry.quantityto};
+                        conversion = roundTo(parseFloat(entry.quantityto) / parseFloat(entry.quantityfrom));
+                    }
                 }
-            }
 
-            updateFieldValue('conversion', conversion, rowId);
-            touchManuallyQuantityField(rowId);
+                updateFieldValue('conversion', conversion, rowId);
+                touchManuallyQuantityField(rowId);
+            }
         }
 
         function quantity_createElement(value, options) {
@@ -583,9 +589,10 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 $(this).data("timeout", setTimeout(function () {
                     var rowId = getRowIdFromElement(t);
 
+                    var conversion = getFieldValue('conversion', rowId);
                     var newGivenQuantity = null;
                     if (quantities[rowId]) {
-                        newGivenQuantity = roundTo(t.val() * quantities[rowId].to / quantities[rowId].from);
+                        newGivenQuantity = roundTo(t.val() * conversion);
                     }
                     newGivenQuantity = roundTo(newGivenQuantity);
                     if (!newGivenQuantity || t.hasClass('error-grid')) {
@@ -625,9 +632,10 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 $(this).data("timeout", setTimeout(function () {
                     var rowId = getRowIdFromElement(t);
 
+                    var conversion = getFieldValue('conversion', rowId);
                     var newQuantity = null;
                     if (quantities[rowId]) {
-                        newQuantity = roundTo(t.val() * quantities[rowId].from / quantities[rowId].to);
+                        newQuantity = roundTo(t.val() * (1 / conversion));
                     }
                     newQuantity = roundTo(newQuantity);
                     if (!newQuantity || t.hasClass('error-grid')) {
@@ -636,6 +644,39 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
 
                     updateFieldValue('quantity', newQuantity, rowId);
                 }, 500));
+            });
+
+            return $input;
+        }
+
+        function conversion_createElement(value, options) {
+            var $input = $('<input type="number" min="0" step="0.00001" id="' + options.id + '" name="' + options.name + '" rowId="' + options.rowId + '" />');
+            $input.val(value);
+
+            $($input).bind('change keydown paste input', function () {
+                var t = $(this);
+                conversionModified = true;
+                window.clearTimeout(t.data("timeout"));
+
+                validateElement(t, validatorNumber);
+
+                console.log(t.val());
+                $(this).data("timeout", setTimeout(function () {
+                    var rowId = getRowIdFromElement(t);
+
+                    var quantity = getFieldValue('quantity', rowId);
+                    var newGivenQuantity = null;
+                    if (quantities[rowId]) {
+                        newGivenQuantity = roundTo(t.val() * quantity);
+                    }
+                    newGivenQuantity = roundTo(newGivenQuantity);
+                    if (!newGivenQuantity || t.hasClass('error-grid')) {
+                        newGivenQuantity = '';
+                    }
+
+                    updateFieldValue('givenquantity', newGivenQuantity, rowId);
+                }, 500));
+
             });
 
             return $input;
@@ -663,6 +704,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
 
             $select.bind('change', function () {
                 var newValue = $(this).val();
+                conversionModified = false;
                 updateConversionByGivenUnitValue(newValue, getRowIdFromElement($(this)));
             });
 
@@ -780,8 +822,13 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
             errorTextFormat: function (response) {
                 return translateMessages(JSON.parse(response.responseText).message);
             },
-            colNames: ['ID', 'document', 'number', 'actions',  'product', 'additionalCode', 'quantity', 'unit', 'givenquantity', 'givenunit', 'conversion', 'price', 'expirationdate',
-                'productiondate', 'batch', 'palletNumber', 'typeOfPallet', 'storageLocation'/*, 'resource_id'*/],
+            colNames: ['ID', QCD.translate('qcadooView.gridColumn.document'), QCD.translate('qcadooView.gridColumn.number'), QCD.translate('qcadooView.gridColumn.actions'), QCD.translate('qcadooView.gridColumn.product'), QCD.translate('qcadooView.gridColumn.additionalCode'),
+                QCD.translate('qcadooView.gridColumn.quantity'), QCD.translate('qcadooView.gridColumn.unit'), QCD.translate('qcadooView.gridColumn.givenquantity'), 
+                QCD.translate('qcadooView.gridColumn.givenunit'), QCD.translate('qcadooView.gridColumn.conversion'), QCD.translate('qcadooView.gridColumn.price'), 
+                QCD.translate('qcadooView.gridColumn.expirationdate'), QCD.translate('qcadooView.gridColumn.productiondate'), QCD.translate('qcadooView.gridColumn.batch'), 
+                QCD.translate('qcadooView.gridColumn.palletNumber'), QCD.translate('qcadooView.gridColumn.typeOfPallet'), 
+                QCD.translate('qcadooView.gridColumn.storageLocation')/*, 'resource_id'*/],
+
             colModel: [
                 {
                     name: 'id',
@@ -926,7 +973,11 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                     index: 'conversion',
                     editable: true,
                     required: true,
-                    editoptions: {readonly: 'readonly'},
+                    edittype: 'custom',
+                    editoptions: {
+                        custom_element: conversion_createElement,
+                        custom_value: input_value
+                    },
                     formoptions: {
                         rowpos: 8,
                         colpos: 1
@@ -1020,7 +1071,6 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                     name: 'typeOfPallet',
                     index: 'typeOfPallet',
                     editable: true,
-                    formatter: typeOfPalletFmatter,
                     required: true,
                     edittype: 'select',
                     editoptions: {
@@ -1069,6 +1119,9 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
 //                    jQuery('#grid').editRow(id, gridEditOptions);
 //                }
               //  jQuery('#grid').editRow(id, gridEditOptions);
+              //  if (!$scope.config.readOnly) {
+               //     jQuery('#grid').editRow(id, gridEditOptions);
+              //  }
             },
             ajaxRowOptions: {
                 contentType: "application/json"
@@ -1115,16 +1168,14 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 url: '../../integration/rest/documentPositions/gridConfig/' + config.document_id + '.html'
 
             }).then(function successCallback(response) {
+                config.readOnly = response.data.readOnly;
+
                 angular.forEach(config.colModel, function (value, key) {
                     if (hideColumnInGrid(value.index, response.data)) {
                         config.colModel[key].hidden = true;
                         config.colModel[key].editrules = config.colModel[key].editrules || {};
                         config.colModel[key].editrules.edithidden = true;
                     }
-                });
-
-                angular.forEach(config.colNames, function (value, key) {
-                    config.colNames[key] = QCD.translate('qcadooView.gridColumn.' + value);
                 });
 
                 $http({
@@ -1141,8 +1192,9 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                         return element.index === 'typeOfPallet';
                     })[0].editoptions.value = selectOptionsTypeOfPallets.join(';');
 
-                    $scope.readOnly = config.readOnly;
-                    $scope.config = config;
+                    var newConfig = {};
+                    newConfig = angular.merge(newConfig, config);
+                    $scope.config = newConfig;
 
                     $('#gridWrapper').unblock();
 
