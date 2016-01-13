@@ -324,7 +324,8 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
         var _this = this;
         var quantities = {};
         var lastSel;
-        var conversionModified = false;
+        var conversionModified = true;
+        var firstLoad = true;
 
         function getRowIdFromElement(el) {
             var rowId = el.attr('rowId');
@@ -428,7 +429,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 if (productInput.length) {
                     // edit form
                     var unitInput = $('#unit').val(units['unit']);
-
+                    var rowId = getRowIdFromElement(unitInput);
                     var additionalUnitInput = $('#givenunit');
                     additionalUnitInput[0].options.length = 0;
                     angular.forEach(units['available_additionalunits'], function (value, key) {
@@ -438,7 +439,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                         additionalUnitValue = units['additionalunit'];
                     }
                     additionalUnitInput.val(additionalUnitValue);
-                    updateConversionByGivenUnitValue(additionalUnitValue);
+                    updateConversionByGivenUnitValue(additionalUnitValue, rowId);
 
                 } else {
                     // edit inline
@@ -560,19 +561,21 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
         function updateConversionByGivenUnitValue(givenUnitValue, rowId) {
             var conversion = '';
 
-            if (!conversionModified) {
                 if (available_additionalunits) {
                     var entry = available_additionalunits.filter(function (element, index) {
                         return element.key === givenUnitValue;
                     })[0];
                     if (entry) {
                         quantities[rowId || 0] = {from: entry.quantityfrom, to: entry.quantityto};
-                        conversion = roundTo(parseFloat(entry.quantityto) / parseFloat(entry.quantityfrom));
+                        if (!firstLoad && !conversionModified) {
+                            conversion = roundTo(parseFloat(entry.quantityto) / parseFloat(entry.quantityfrom));
+                        }
                     }
+                if (!firstLoad && !conversionModified) {
+                    updateFieldValue('conversion', conversion, rowId);
                 }
-
-                updateFieldValue('conversion', conversion, rowId);
                 touchManuallyQuantityField(rowId);
+                firstLoad = false;
             }
         }
 
@@ -591,8 +594,10 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
 
                     var conversion = getFieldValue('conversion', rowId);
                     var newGivenQuantity = null;
+                    var quantity = t.val();
+
                     if (quantities[rowId]) {
-                        newGivenQuantity = roundTo(t.val() * conversion);
+                        newGivenQuantity = roundTo(quantity * conversion);
                     }
                     newGivenQuantity = roundTo(newGivenQuantity);
                     if (!newGivenQuantity || t.hasClass('error-grid')) {
