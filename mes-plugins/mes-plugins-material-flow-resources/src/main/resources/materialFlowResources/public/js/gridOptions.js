@@ -402,7 +402,7 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
 
             if (productInput.length) {
                 // edit form
-                selector = $('#' + field).val();
+                selector = $('#' + field);
 
             } else {
                 // edit inline
