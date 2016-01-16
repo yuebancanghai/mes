@@ -1193,6 +1193,9 @@ myApp.controller('GridController', ['$scope', '$window', '$http', function ($sco
                 if (columnIndex === 'batch' && !responseDate.showbatch) {
                     return true;
                 }
+                if (columnIndex === 'price' && !responseDate.showprice) {
+                    return true;
+                }
 
                 return false;
             };
