@@ -94,8 +94,6 @@ public class ProductionTrackingDetailsListeners {
     }
 
     public void changeTrackingState(final ViewDefinitionState view, final ComponentState state, final String[] args) {
-        FormComponent form = (FormComponent) view.getComponentByReference(L_FORM);
-
         stateExecutorService.changeState(ProductionTrackingStateServiceMarker.class, view, args);
     }
 
