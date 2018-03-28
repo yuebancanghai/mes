@@ -23,6 +23,15 @@
  */
 package com.qcadoo.mes.basicProductionCounting.aop;
 
+import static com.qcadoo.mes.orders.states.constants.OrderStateChangePhase.LAST;
+
+import org.apache.log4j.Logger;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Configurable;
+
 import com.qcadoo.mes.basicProductionCounting.BpcOrderStateListenerService;
 import com.qcadoo.mes.basicProductionCounting.constants.BasicProductionCountingConstants;
 import com.qcadoo.mes.orders.states.aop.OrderStateChangeAspect;
@@ -33,18 +42,13 @@ import com.qcadoo.mes.states.annotation.RunInPhase;
 import com.qcadoo.mes.states.aop.AbstractStateListenerAspect;
 import com.qcadoo.mes.states.aop.RunForStateTransitionAspect;
 import com.qcadoo.plugin.api.RunIfEnabled;
-import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Before;
-import org.aspectj.lang.annotation.Pointcut;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Configurable;
-
-import static com.qcadoo.mes.orders.states.constants.OrderStateChangePhase.LAST;
 
 @Aspect
 @Configurable
 @RunIfEnabled(BasicProductionCountingConstants.PLUGIN_IDENTIFIER)
 public class BpcOrderStateListenerAspect extends AbstractStateListenerAspect {
+
+    private static final Logger LOGGER = Logger.getLogger(BpcOrderStateListenerAspect.class);
 
     @Autowired
     private BpcOrderStateListenerService listenerService;
@@ -53,7 +57,11 @@ public class BpcOrderStateListenerAspect extends AbstractStateListenerAspect {
     @RunForStateTransition(sourceState = RunForStateTransitionAspect.WILDCARD_STATE, targetState = OrderStateStringValues.ACCEPTED)
     @Before(PHASE_EXECUTION_POINTCUT)
     public void onAccept(final StateChangeContext stateChangeContext, final int phase) {
+        long start = System.nanoTime();
+
         listenerService.onAccept(stateChangeContext);
+        long stop = System.nanoTime();
+        LOGGER.warn(BpcOrderStateListenerAspect.class + ".onAccept" + "," + (stop - start));
     }
 
     @Pointcut(OrderStateChangeAspect.SELECTOR_POINTCUT)

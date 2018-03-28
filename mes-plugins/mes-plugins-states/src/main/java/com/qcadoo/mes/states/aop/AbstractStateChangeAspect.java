@@ -62,7 +62,13 @@ public abstract class AbstractStateChangeAspect implements StateChangeService {
     @Override
     public void changeState(final StateChangeContext stateChangeContext) {
         try {
+            long start = System.nanoTime();
+            LOGGER.debug("CHANGE STATE START");
             performStateChange(stateChangeContext);
+
+            long stop = System.nanoTime();
+            LOGGER.warn(AbstractStateChangeAspect.class + ".changeState" + "," + (stop - start));
+            LOGGER.debug("CHANGE STATE STOP");
         } catch (Exception exception) {
             LOGGER.warn("Can't perform state change", exception);
             stateChangeContext.setStatus(StateChangeStatus.FAILURE);
@@ -112,8 +118,8 @@ public abstract class AbstractStateChangeAspect implements StateChangeService {
             if (!stateChangeContext.isOwnerValid()) {
                 stateChangeContext.setStatus(StateChangeStatus.FAILURE);
                 stateChangeContext.setField(describer.getDateTimeFieldName(), new Date());
-                LOGGER.info(String.format("State change : failure. Entity name : %S id : %d.",
-                        stateChangeContext.getOwner().getDataDefinition().getName(), stateChangeContext.getOwner().getId()));
+                LOGGER.info(String.format("State change : failure. Entity name : %S id : %d.", stateChangeContext.getOwner()
+                        .getDataDefinition().getName(), stateChangeContext.getOwner().getId()));
             }
             return;
         }
@@ -128,16 +134,20 @@ public abstract class AbstractStateChangeAspect implements StateChangeService {
         boolean ownerIsValid = stateChangeContext.isOwnerValid();
         if (ownerIsValid) {
             owner.setField(describer.getOwnerStateFieldName(), targetState.getStringValue());
+            long start = System.nanoTime();
             ownerIsValid = owner.getDataDefinition().save(owner).isValid();
+
+            long stop = System.nanoTime();
+            LOGGER.warn(AbstractStateChangeAspect.class + ".performChangeEntityState.save" + "," + (stop - start));
         }
 
         if (ownerIsValid) {
             stateChangeContext.setStatus(SUCCESSFUL);
-            LOGGER.info(String.format("State change : successful. Entity name : %S id : %d. Target state : %S",
-                    owner.getDataDefinition().getName(), owner.getId(), targetState));
+            LOGGER.info(String.format("State change : successful. Entity name : %S id : %d. Target state : %S", owner
+                    .getDataDefinition().getName(), owner.getId(), targetState));
         } else {
-            LOGGER.info(String.format("State change : failure. Entity name : %S id : %d. Target state : %S",
-                    owner.getDataDefinition().getName(), owner.getId(), targetState));
+            LOGGER.info(String.format("State change : failure. Entity name : %S id : %d. Target state : %S", owner
+                    .getDataDefinition().getName(), owner.getId(), targetState));
             ValidationMessageHelper.copyErrorsFromEntity(stateChangeContext, owner);
             stateChangeContext.setStatus(StateChangeStatus.FAILURE);
         }

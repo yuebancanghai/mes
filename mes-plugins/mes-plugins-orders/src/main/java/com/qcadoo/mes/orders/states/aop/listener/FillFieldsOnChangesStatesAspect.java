@@ -25,6 +25,7 @@ package com.qcadoo.mes.orders.states.aop.listener;
 
 import java.math.BigDecimal;
 
+import org.apache.log4j.Logger;
 import org.aspectj.lang.annotation.After;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
@@ -48,6 +49,8 @@ import com.qcadoo.plugin.api.RunIfEnabled;
 @RunIfEnabled(OrdersConstants.PLUGIN_IDENTIFIER)
 public class FillFieldsOnChangesStatesAspect extends AbstractStateListenerAspect {
 
+    private static final Logger LOGGER = Logger.getLogger(FillFieldsOnChangesStatesAspect.class);
+
     @Autowired
     private OrderStateService orderStateService;
 
@@ -55,8 +58,12 @@ public class FillFieldsOnChangesStatesAspect extends AbstractStateListenerAspect
     @RunForStateTransition(sourceState = OrderStateStringValues.ACCEPTED, targetState = OrderStateStringValues.IN_PROGRESS)
     @After(PHASE_EXECUTION_POINTCUT)
     public void afterStartProgress(final StateChangeContext stateChangeContext, final int phase) {
+        long start = System.nanoTime();
         stateChangeContext.getOwner().setField(OrderFields.DONE_QUANTITY, BigDecimal.ZERO);
         orderStateService.checkOrderDates(stateChangeContext);
+
+        long stop = System.nanoTime();
+        LOGGER.warn(FillFieldsOnChangesStatesAspect.class + ".afterStartProgress" + "," + (stop - start));
     }
 
     @RunInPhase(OrderStateChangePhase.LAST)

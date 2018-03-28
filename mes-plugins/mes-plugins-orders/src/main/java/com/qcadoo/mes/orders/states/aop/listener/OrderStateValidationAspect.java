@@ -28,6 +28,7 @@ import static com.qcadoo.mes.orders.states.constants.OrderStateStringValues.COMP
 import static com.qcadoo.mes.orders.states.constants.OrderStateStringValues.IN_PROGRESS;
 import static com.qcadoo.mes.states.aop.RunForStateTransitionAspect.WILDCARD_STATE;
 
+import org.apache.log4j.Logger;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
@@ -49,6 +50,8 @@ import com.qcadoo.plugin.api.RunIfEnabled;
 @RunIfEnabled(OrdersConstants.PLUGIN_IDENTIFIER)
 public class OrderStateValidationAspect extends AbstractStateListenerAspect {
 
+    private static final Logger LOGGER = Logger.getLogger(OrderStateValidationAspect.class);
+
     @Autowired
     private OrderStateValidationService orderStateValidationService;
 
@@ -60,14 +63,23 @@ public class OrderStateValidationAspect extends AbstractStateListenerAspect {
     @RunForStateTransition(sourceState = WILDCARD_STATE, targetState = ACCEPTED)
     @Before(PHASE_EXECUTION_POINTCUT)
     public void preValidationOnAccept(final StateChangeContext stateChangeContext, final int phase) {
+        long start = System.nanoTime();
+
         orderStateValidationService.validationOnAccepted(stateChangeContext);
+
+        long stop = System.nanoTime();
+        LOGGER.warn(OrderStateValidationAspect.class + ".preValidationOnAccept" + "," + (stop - start));
     }
 
     @RunInPhase(OrderStateChangePhase.PRE_VALIDATION)
     @RunForStateTransition(sourceState = WILDCARD_STATE, targetState = IN_PROGRESS)
     @Before(PHASE_EXECUTION_POINTCUT)
     public void preValidationOnInProgress(final StateChangeContext stateChangeContext, final int phase) {
+        long start = System.nanoTime();
         orderStateValidationService.validationOnInProgress(stateChangeContext);
+
+        long stop = System.nanoTime();
+        LOGGER.warn(OrderStateValidationAspect.class + ".preValidationOnInProgress" + "," + (stop - start));
     }
 
     @RunInPhase(OrderStateChangePhase.PRE_VALIDATION)

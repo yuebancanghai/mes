@@ -23,6 +23,7 @@
  */
 package com.qcadoo.mes.productionCounting.states.aop.listener;
 
+import org.apache.log4j.Logger;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
@@ -46,6 +47,8 @@ import com.qcadoo.plugin.api.RunIfEnabled;
 @RunIfEnabled(ProductionCountingConstants.PLUGIN_IDENTIFIER)
 public class ProductionCountingOrderStatesListenerAspect extends AbstractStateListenerAspect {
 
+    private static final Logger LOGGER = Logger.getLogger(ProductionCountingOrderStatesListenerAspect.class);
+
     @Autowired
     private TechnologyValidationServicePC technologyValidationServicePC;
 
@@ -68,7 +71,12 @@ public class ProductionCountingOrderStatesListenerAspect extends AbstractStateLi
     @RunForStateTransition(sourceState = OrderStateStringValues.WILDCARD_STATE, targetState = OrderStateStringValues.ACCEPTED)
     @Before(PHASE_EXECUTION_POINTCUT)
     public void validationOnAccepted(final StateChangeContext stateChangeContext, final int phase) {
+        long start = System.nanoTime();
+
         technologyValidationServicePC.validateTypeOfProductionRecordingForOrder(stateChangeContext);
+
+        long stop = System.nanoTime();
+        LOGGER.warn(ProductionCountingOrderStatesListenerAspect.class + ".validationOnAccepted" + "," + (stop - start));
     }
 
     @RunInPhase(OrderStateChangePhase.DEFAULT)
