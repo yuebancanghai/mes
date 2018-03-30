@@ -51,6 +51,7 @@ public class ProductionCountingQuantityHooks {
     private ProductionCountingQuantitySetService productionCountingQuantitySetService;
 
     public void onCreate(final DataDefinition productionCountingQuantityDD, final Entity productionCountingQuantity) {
+
         fillOrder(productionCountingQuantity);
         fillBasicProductionCounting(productionCountingQuantity);
         fillIsNonComponent(productionCountingQuantity);

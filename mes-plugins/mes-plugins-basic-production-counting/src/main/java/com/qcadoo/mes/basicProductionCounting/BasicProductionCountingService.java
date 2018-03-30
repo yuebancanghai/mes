@@ -88,14 +88,6 @@ public interface BasicProductionCountingService {
     void updateProductionCountingQuantitiesAndOperationRuns(final Entity order);
 
     /**
-     * Create basic production countings
-     * 
-     * @param order
-     *            order
-     */
-    void createBasicProductionCountings(final Entity order);
-
-    /**
      * Creates basic production counting
      * 
      * @param order

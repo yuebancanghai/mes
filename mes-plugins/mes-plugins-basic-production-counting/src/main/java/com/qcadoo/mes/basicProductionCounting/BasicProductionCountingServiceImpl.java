@@ -31,16 +31,22 @@ import static com.qcadoo.model.api.search.SearchProjections.sum;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.qcadoo.mes.basic.constants.ProductFields;
 import com.qcadoo.mes.basicProductionCounting.constants.BasicProductionCountingConstants;
@@ -50,6 +56,7 @@ import com.qcadoo.mes.basicProductionCounting.constants.ProductionCountingOperat
 import com.qcadoo.mes.basicProductionCounting.constants.ProductionCountingQuantityFields;
 import com.qcadoo.mes.basicProductionCounting.constants.ProductionCountingQuantityRole;
 import com.qcadoo.mes.basicProductionCounting.constants.ProductionCountingQuantityTypeOfMaterial;
+import com.qcadoo.mes.basicProductionCounting.hooks.ProductionCountingQuantityHooks;
 import com.qcadoo.mes.orders.constants.OrderFields;
 import com.qcadoo.mes.orders.states.constants.OrderState;
 import com.qcadoo.mes.technologies.ProductQuantitiesService;
@@ -78,6 +85,8 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
 
     private static final String QUANTITIES_SUM_ALIAS = "sum";
 
+    private static final Logger LOG = LoggerFactory.getLogger(ProductionCountingQuantityHooks.class);
+
     @Autowired
     private DataDefinitionService dataDefinitionService;
 
@@ -100,6 +109,8 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
 
         createProductionCountingOperationRuns(order, operationRuns);
         createProductionCountingQuantities(order, productComponentQuantities, nonComponents);
+        createBasicProductionCountings(order);
+        associateProductionCountingQuantitiesWithBasicProductionCountings(order);
     }
 
     private void createProductionCountingOperationRuns(final Entity order, final Map<Long, BigDecimal> operationRuns) {
@@ -149,6 +160,7 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
         }
 
         productionCountingQuantitySetService.markIntermediateInProductionCountingQuantities(productionCountingQuantities);
+        order.setField(OrderFieldsBPC.PRODUCTION_COUNTING_QUANTITIES, productionCountingQuantities);
     }
 
     @Override
@@ -167,7 +179,7 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
         productionCountingQuantity.setField(ProductionCountingQuantityFields.PLANNED_QUANTITY,
                 numberService.setScale(plannedQuantity));
 
-        productionCountingQuantity = productionCountingQuantity.getDataDefinition().save(productionCountingQuantity);
+        // productionCountingQuantity = productionCountingQuantity.getDataDefinition().save(productionCountingQuantity);
 
         return productionCountingQuantity;
     }
@@ -214,7 +226,8 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
     private boolean checkIfTechnologyOperationComponentsAreSame(final Entity order, final Entity technologyOperationComponent) {
         Entity orderTechnologyOperationComponent = getOrderTechnologyOperationComponent(order);
 
-        return orderTechnologyOperationComponent != null && technologyOperationComponent.getId().equals(orderTechnologyOperationComponent.getId());
+        return orderTechnologyOperationComponent != null
+                && technologyOperationComponent.getId().equals(orderTechnologyOperationComponent.getId());
     }
 
     private boolean isRoleProduced(final String role) {
@@ -238,7 +251,8 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
             Entity previousTechnologyOperationComponent = technologyOperationComponent
                     .getBelongsToField(TechnologyOperationComponentFields.PARENT);
 
-            return previousTechnologyOperationComponent != null && checkIfProductExists(previousTechnologyOperationComponent, product);
+            return previousTechnologyOperationComponent != null
+                    && checkIfProductExists(previousTechnologyOperationComponent, product);
         }
     }
 
@@ -336,18 +350,21 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
     }
 
     public void createBasicProductionCountings(final Entity order) {
-        final List<Entity> basicProductionCountings = getBasicProductionCountingDD().find()
+        List<Entity> basicProductionCountings = getBasicProductionCountingDD().find()
                 .add(SearchRestrictions.belongsTo(BasicProductionCountingFields.ORDER, order)).list().getEntities();
 
         if (basicProductionCountings == null || basicProductionCountings.isEmpty()) {
+            basicProductionCountings = Lists.newArrayList();
             final List<Entity> productionCountingQuantities = order
                     .getHasManyField(OrderFieldsBPC.PRODUCTION_COUNTING_QUANTITIES)
-                    .find()
-                    .add(SearchRestrictions.or(SearchRestrictions.eq(ProductionCountingQuantityFields.ROLE,
-                            ProductionCountingQuantityRole.USED.getStringValue()), SearchRestrictions.and(SearchRestrictions.eq(
-                            ProductionCountingQuantityFields.ROLE, ProductionCountingQuantityRole.PRODUCED.getStringValue()),
-                            SearchRestrictions.eq(ProductionCountingQuantityFields.TYPE_OF_MATERIAL,
-                                    ProductionCountingQuantityTypeOfMaterial.WASTE.getStringValue())))).list().getEntities();
+                    .stream()
+                    .filter(pcq -> pcq.getStringField(ProductionCountingQuantityFields.ROLE).equals(
+                            ProductionCountingQuantityRole.USED.getStringValue())
+                            || (pcq.getStringField(ProductionCountingQuantityFields.ROLE).equals(
+                                    ProductionCountingQuantityRole.PRODUCED.getStringValue()) && pcq.getStringField(
+                                    ProductionCountingQuantityFields.TYPE_OF_MATERIAL).equals(
+                                    ProductionCountingQuantityTypeOfMaterial.WASTE.getStringValue())))
+                    .collect(Collectors.toList());
 
             Set<Long> alreadyAddedProducts = Sets.newHashSet();
 
@@ -355,13 +372,14 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
                 Entity product = productionCountingQuantity.getBelongsToField(ProductionCountingQuantityFields.PRODUCT);
 
                 if (!alreadyAddedProducts.contains(product.getId())) {
-                    createBasicProductionCounting(order, product);
+                    basicProductionCountings.add(createBasicProductionCounting(order, product));
 
                     alreadyAddedProducts.add(product.getId());
                 }
             }
 
-            createBasicProductionCounting(order, order.getBelongsToField(OrderFields.PRODUCT));
+            basicProductionCountings.add(createBasicProductionCounting(order, order.getBelongsToField(OrderFields.PRODUCT)));
+            order.setField(OrderFieldsBPC.BASIC_PRODUCTION_COUNTINGS, basicProductionCountings);
         }
     }
 
@@ -375,28 +393,55 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
                 .setField(BasicProductionCountingFields.PRODUCED_QUANTITY, numberService.setScale(BigDecimal.ZERO));
         basicProductionCounting.setField(BasicProductionCountingFields.USED_QUANTITY, numberService.setScale(BigDecimal.ZERO));
 
-        basicProductionCounting = basicProductionCounting.getDataDefinition().save(basicProductionCounting);
+        // basicProductionCounting = basicProductionCounting.getDataDefinition().save(basicProductionCounting);
 
         return basicProductionCounting;
     }
 
     @Override
     public void associateProductionCountingQuantitiesWithBasicProductionCountings(final Entity order) {
-        final List<Entity> basicProductionCountings = order.getHasManyField(OrderFieldsBPC.BASIC_PRODUCTION_COUNTINGS).find()
-                .list().getEntities();
-
+        final List<Entity> basicProductionCountings = order.getHasManyField(OrderFieldsBPC.BASIC_PRODUCTION_COUNTINGS);
+        final List<Entity> productionCountingQuantities = order.getHasManyField(OrderFieldsBPC.PRODUCTION_COUNTING_QUANTITIES);
+        Multimap<Long, Entity> groupedProductionCountingQuantities = groupProductionCountingQuantitiesByProduct(productionCountingQuantities);
+        List<Entity> savedBasicProductionCountings = Lists.newArrayList();
+        List<Entity> savedProductionCountingQuantities = Lists.newArrayList();
         for (Entity basicProductionCounting : basicProductionCountings) {
             Entity product = basicProductionCounting.getBelongsToField(BasicProductionCountingFields.PRODUCT);
 
-            final List<Entity> productionCountingQuantities = order
-                    .getHasManyField(OrderFieldsBPC.PRODUCTION_COUNTING_QUANTITIES).find()
-                    .add(SearchRestrictions.belongsTo(BasicProductionCountingFields.PRODUCT, product)).list().getEntities();
+            // final List<Entity> productionCountingQuantitiesForProduct = productionCountingQuantities
+            // .stream()
+            // .filter(pcq -> pcq.getBelongsToField(ProductionCountingQuantityFields.PRODUCT).getId()
+            // .equals(product.getId())).collect(Collectors.toList());
+            final Collection<Entity> productionCountingQuantitiesForProduct = groupedProductionCountingQuantities.get(product
+                    .getId());
 
-            basicProductionCounting.setField(BasicProductionCountingFields.PRODUCTION_COUNTING_QUANTITIES,
-                    productionCountingQuantities);
+            Entity savedBPC = basicProductionCounting.getDataDefinition().save(basicProductionCounting);
+            List<Entity> savedProductionCountingQuantitiesForProduct = Lists.newArrayList();
 
-            basicProductionCounting.getDataDefinition().save(basicProductionCounting);
+            for (Entity pcq : productionCountingQuantitiesForProduct) {
+                pcq.setField(ProductionCountingQuantityFields.BASIC_PRODUCTION_COUNTING, savedBPC);
+                Entity savedPCQ = pcq.getDataDefinition().save(pcq);
+                savedProductionCountingQuantitiesForProduct.add(savedPCQ);
+            }
+            savedProductionCountingQuantities.addAll(savedProductionCountingQuantitiesForProduct);
+
+            savedBPC.setField(BasicProductionCountingFields.PRODUCTION_COUNTING_QUANTITIES,
+                    savedProductionCountingQuantitiesForProduct);
+
+            savedBasicProductionCountings.add(savedBPC);
         }
+        order.setField(OrderFieldsBPC.BASIC_PRODUCTION_COUNTINGS, savedBasicProductionCountings);
+        order.setField(OrderFieldsBPC.PRODUCTION_COUNTING_QUANTITIES, savedProductionCountingQuantities);
+
+    }
+
+    private Multimap<Long, Entity> groupProductionCountingQuantitiesByProduct(final List<Entity> productionCountingQuantities) {
+
+        Multimap<Long, Entity> result = ArrayListMultimap.create();
+        for (Entity pcq : productionCountingQuantities) {
+            result.put(pcq.getBelongsToField(ProductionCountingQuantityFields.PRODUCT).getId(), pcq);
+        }
+        return result;
     }
 
     @Override
@@ -508,12 +553,13 @@ public class BasicProductionCountingServiceImpl implements BasicProductionCounti
         Entity entity = dataDefinitionService
                 .get(BasicProductionCountingConstants.PLUGIN_IDENTIFIER,
                         BasicProductionCountingConstants.MODEL_BASIC_PRODUCTION_COUNTING)
-                .find().add(SearchRestrictions.belongsTo(BasicProductionCountingFields.ORDER, order))
+                .find()
+                .add(SearchRestrictions.belongsTo(BasicProductionCountingFields.ORDER, order))
                 .add(SearchRestrictions.belongsTo(BasicProductionCountingFields.PRODUCT,
                         order.getBelongsToField(OrderFields.PRODUCT)))
-                .setProjection(list().add(alias(sum(BasicProductionCountingFields.PRODUCED_QUANTITY), QUANTITIES_SUM_ALIAS))
-                        .add(rowCount()))
-                .addOrder(SearchOrders.asc(QUANTITIES_SUM_ALIAS)).setMaxResults(1).uniqueResult();
+                .setProjection(
+                        list().add(alias(sum(BasicProductionCountingFields.PRODUCED_QUANTITY), QUANTITIES_SUM_ALIAS)).add(
+                                rowCount())).addOrder(SearchOrders.asc(QUANTITIES_SUM_ALIAS)).setMaxResults(1).uniqueResult();
         BigDecimal doneQuantity = BigDecimalUtils.convertNullToZero(entity.getDecimalField(QUANTITIES_SUM_ALIAS));
 
         return numberService.setScale(doneQuantity);
